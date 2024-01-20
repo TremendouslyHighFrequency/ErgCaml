@@ -1,0 +1,97 @@
+let fromBase58 str = ... 
+let blake2b256 bytes = ...
+let pkToPropBytes pk = ...
+
+(* Initial Variables *)
+let swampAudioNode = pkToPropBytes "9hKFHa886348VhfM1BRfLPKi8wwXMnyVqqmri9p5zPFE8qgMMui"
+let withdrawFee = 10000000L
+let withdrawIndictationScript = fromBase58 "5XykR68c3FDk2edgiug1WVS9RYnZjm7egu9VGHq9kiNWmTYxKMLUb652hBwssbL4e4rhwcLJVzWBWoMVeBmrmCzz5"
+
+(* SELF Variables *)
+let heldERG0 = SELF.value
+let heldTokens0 = SELF.tokens
+let initialShares = SELF.R4.(get : (int * bytes) list)
+let initialTokenList = SELF.R5.(get : bytes list)
+let initialTokenAmount = SELF.R6.(get : int)
+let initialWithdrawTokens = SELF.R7.(get : (bytes * int))
+
+(* Main Logic *)
+let sigmaPropEquivalent =
+  if CONTEXT.dataInputs.size = 0 then
+    (* Default Case Logic *)
+    let successor = OUTPUTS.(0) in
+    let heldERG1 = successor.value in
+    let heldTokens1 = successor.tokens in
+    let finalShares = successor.R4.(get : (int * bytes) list) in
+    let finalTokenList = successor.R5.(get : bytes list) in
+    let finalTokenAmount = successor.R6.(get : int) in
+    let finalWithdrawTokens = successor.R7.(get : (bytes * int)) in
+
+    let deltaERG = heldERG1 - heldERG0 in
+
+    let validSelfSuccessorScript = successor.propositionBytes = SELF.propositionBytes in
+    let validDeltaERG = deltaERG >= 0 in
+    let validRegisters = finalShares = initialShares && finalTokenList = initialTokenList && finalTokenAmount = initialTokenAmount - 1 && finalWithdrawTokens = initialWithdrawTokens in
+
+    let validSuccessorTokens = List.for_all (fun id -> 
+      List.exists (fun (token_id, amount) -> token_id = id && amount >= finalTokenAmount) successor.tokens
+    ) initialTokenList in
+
+    let validShares = List.for_all (fun (share_amount, share_propBytes) -> 
+      List.exists (fun output -> output.propositionBytes = share_propBytes && output.value >= share_amount) OUTPUTS
+    ) initialShares in
+
+    validSelfSuccessorScript &&
+    validDeltaERG &&
+    validSuccessorTokens &&
+    validRegisters &&
+    validShares
+  else
+    (* Withdrawal Case Logic *)
+    let withdrawalIndication = CONTEXT.dataInputs.(0) in
+    let withdrawalTokens = withdrawalIndication.tokens.(0) in
+
+    let validIndication = initialWithdrawTokens = withdrawalTokens in
+    let validWithdrawScript = blake2b256 withdrawalIndication.propositionBytes = withdrawIndictationScript in
+
+    let successor = OUTPUTS.(0) in
+    let swampAudioBox = OUTPUTS.(1) in
+    let withdrawalBox = OUTPUTS.(2) in
+
+    let tokenWithdrawalIndex = withdrawalBox.R4.(get : int) in
+    let withdrawnTokens = withdrawalBox.tokens.(0) in
+
+    let heldERG1 = successor.value in
+    let heldTokens1 = successor.tokens in
+    let finalShares = successor.R4.(get : (int * bytes) list) in
+    let finalTokenList = successor.R5.(get : bytes list) in
+    let finalTokenAmount = successor.R6.(get : int) in
+    let finalWithdrawTokens = successor.R7.(get : (bytes * int)) in
+
+    let validSelfSuccessorScript = successor.propositionBytes = SELF.propositionBytes in
+
+    let filteredWithdrawInitialTokens = List.filter (fun (token_id, _) -> token_id <> initialTokenList.(tokenWithdrawalIndex)) heldTokens0 in
+    let filteredWithdrawFinalTokens = List.filter (fun (token_id, _) -> token_id <> initialTokenList.(tokenWithdrawalIndex)) heldTokens1 in
+
+    let validSuccessorWithdrawnTokens = filteredWithdrawInitialTokens = filteredWithdrawFinalTokens in
+
+    let validRegisters = finalShares = initialShares && finalTokenList = initialTokenList && finalTokenAmount = initialTokenAmount && finalWithdrawTokens = initialWithdrawTokens in
+
+    let validWithdrawer = withdrawalBox.propositionBytes = (List.nth initialShares tokenWithdrawalIndex).(1) in
+    let validTokensWithdrawn = withdrawnTokens.(0) = initialTokenList.(tokenWithdrawalIndex) && withdrawnTokens.(1) >= initialTokenAmount in
+
+    let validSwampAudioScript = swampAudioBox.propositionBytes = swampAudioNode in
+    let validSwampValue = swampAudioBox.value >= withdrawFee in
+
+    validWithdrawer &&
+    validTokensWithdrawn &&
+    validSwampValue &&
+    validSwampAudioScript &&
+    validSelfSuccessorScript &&
+    validSuccessorWithdrawnTokens &&
+    validIndication &&
+    validWithdrawScript &&
+    validRegisters
+
+(* The final evaluation *)
+sigmaPropEquivalent
