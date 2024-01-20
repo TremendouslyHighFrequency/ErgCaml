@@ -1,0 +1,65 @@
+let fromBase58 str = ... 
+let blake2b256 bytes = ...
+let pkToPropBytes pk = ...
+
+(* Initial Variables *)
+let withdrawFee = 10000000L
+let saleSuccessorScript = fromBase58 "2wjy8dSAvwKdmCcaz1XwjKdcHjsvHqhHPh4FzshLcZ3AunL6ZykaedY1S3vjevgcSvVoiGJ5K2bGarWmjA5C6R4X"
+let terminationScript = fromBase58 "32NjucdcZFvQfcjDY3it2jDNerkrG7ue8KMEzzC4eCfosWFb7roQVwFkQ6sH7m97W9zwNLraFw6r1FVUfo2VaZJ1"
+let swampAudioNode = pkToPropBytes "9hKFHa886348VhfM1BRfLPKi8wwXMnyVqqmri9p5zPFE8qgMMui"
+
+(* SELF Variables *)
+let heldERG0 = SELF.value
+let heldTokens0 = SELF.tokens
+let initialShares = SELF.R4.(get : (int * bytes) list)
+let initialTokenList = SELF.R5.(get : bytes list)
+let initialTokenAmount = SELF.R6.(get : int)
+
+(* Successor Variables *)
+let successor = OUTPUTS.(0)
+let heldERG1 = successor.value
+let heldTokens1 = successor.tokens
+let finalShares = successor.R4.(get : (int * bytes) list)
+let finalTokenList = successor.R5.(get : bytes list)
+let finalTokenAmount = successor.R6.(get : int)
+
+(* Delta Calculations *)
+let deltaERG = heldERG1 - heldERG0
+
+(* Validations *)
+let validSelfSuccessorScript = successor.propositionBytes = SELF.propositionBytes
+let validDeltaERG = deltaERG >= 0
+let slicedInitialTokens = List.slice heldTokens0 0 (List.length heldTokens0)
+let slicedFinalTokens = List.slice heldTokens1 0 (List.length heldTokens0)
+let validDeltaTokens = slicedInitialTokens = slicedFinalTokens
+let validRegisters = initialShares = finalShares && initialTokenList = finalTokenList && initialTokenAmount = finalTokenAmount
+
+let validDeposit = validSelfSuccessorScript && validDeltaERG && validDeltaTokens && validRegisters
+
+(* More Validations *)
+let validSaleSuccessorScript = blake2b256 (successor.propositionBytes) = saleSuccessorScript
+
+let validSuccessorTokens = List.for_all (fun id -> 
+  List.exists (fun (token_id, amount) -> token_id = id && amount >= finalTokenAmount) successor.tokens
+) initialTokenList
+
+(* Termination Conditions *)
+let terminationConditions = 
+  if List.length OUTPUTS > 2 && List.length (List.nth OUTPUTS 1).tokens > 0 && (List.nth OUTPUTS 1).R7.(is_defined : (int * bytes) list) then
+    let termination = List.nth OUTPUTS 1 in
+    let terminationToken = List.nth termination.tokens 0 in
+    let terminationParties = termination.R7.(get : (int * bytes) list) in
+    let withdrawalRegister = successor.R7.(get : (bytes * int)) in
+    let validTerminationScript = blake2b256 (termination.propositionBytes) = terminationScript in
+    let validToken = terminationToken.(0) = SELF.id && terminationToken.(1) = List.length terminationParties in
+    let validParties = terminationParties = initialShares in
+    let validWithdrawalRegister = withdrawalRegister = terminationToken in
+    validTerminationScript && validToken && validParties && validWithdrawalRegister
+  else false
+
+let validSaleCombine = validSaleSuccessorScript && validSuccessorTokens && validRegisters && terminationConditions
+
+(* Swamp Audio Box and Withdraw Box Conditions *)
+let swampAudioBox = OUTPUTS.(1)
+let validSwampAudioScript = swampAudioBox.propositionBytes = swampAudioNode
+let validSwampValue
