@@ -1,0 +1,78 @@
+let pkToPropBytes pk = ...
+
+(* Initial Variables *)
+let swampAudioNode = pkToPropBytes "9hKFHa886348VhfM1BRfLPKi8wwXMnyVqqmri9p5zPFE8qgMMui"
+let withdrawFee = 10000000L
+
+(* SELF Variables *)
+let initialWithdrawalTokens = SELF.tokens.(0)
+let tokenOwners = SELF.R4.(get : (int * bytes) list)
+let mintTokenDetails = SELF.R5.(get : (bytes * int))
+
+(* Successor Variables *)
+let successor = OUTPUTS.(0)
+let finalTokenOwners = successor.R4.(get : (int * bytes) list)
+let finalMintTokenDetails = successor.R5.(get : (bytes * int))
+
+(* Swamp Audio Box and Conditional Logic *)
+let swampAudioBox = OUTPUTS.(1)
+
+let sigmaPropEquivalent =
+  if swampAudioBox.propositionBytes = swampAudioNode then
+    (* Withdrawal Conditions *)
+    let withdrawalBox = OUTPUTS.(2) in
+    let tokenIndex = withdrawalBox.R4.(get : int) in
+
+    let validSwampAudioScript = swampAudioBox.propositionBytes = swampAudioNode in
+    let validSwampValue = swampAudioBox.value >= withdrawFee in
+
+    let validWithdrawalScript = withdrawalBox.propositionBytes = (List.nth (List.nth tokenOwners tokenIndex) 1) in
+    let validWithdrawAmount = withdrawalBox.tokens.(0).(0) = initialWithdrawalTokens.(0) && withdrawalBox.tokens.(0).(1) = 1 in
+
+    let validSuccessorScript = successor.propositionBytes = SELF.propositionBytes in
+    let validSuccessorValue = successor.value >= SELF.value in
+    let validSuccessorTokens = if initialWithdrawalTokens.(1) > 1 then
+      let finalWithdrawalTokens = successor.tokens.(0) in
+      finalWithdrawalTokens.(1) = initialWithdrawalTokens.(1) - 1 && finalWithdrawalTokens.(0) = initialWithdrawalTokens.(0)
+    else true in
+
+    let validSuccessorOwners = 
+      let before = List.sub tokenOwners 0 tokenIndex in
+      let after = List.sub tokenOwners (tokenIndex + 1) (List.length tokenOwners - tokenIndex - 1) in
+      before @ after = finalTokenOwners in
+
+    let validMintDetails = mintTokenDetails = finalMintTokenDetails in
+    let withdrawAllowed = initialWithdrawalTokens.(1) <> mintTokenDetails.(1) && initialWithdrawalTokens.(0) = mintTokenDetails.(0) in
+
+    validSwampAudioScript &&
+    validSwampValue &&
+    validWithdrawalScript &&
+    validWithdrawAmount &&
+    validSuccessorScript &&
+    validSuccessorValue &&
+    validSuccessorTokens &&
+    validSuccessorOwners &&
+    validMintDetails &&
+    withdrawAllowed
+  else
+    (* Deposit Conditions *)
+    let finalWithdrawalTokens = successor.tokens.(0) in
+
+    let slicedInitialOwners = List.sub tokenOwners 0 (List.length tokenOwners) in
+    let slicedFinalOwners = List.sub finalTokenOwners 0 (List.length tokenOwners) in
+
+    let validSuccessorScript = successor.propositionBytes = SELF.propositionBytes in
+    let validSuccessorValue = successor.value >= SELF.value in
+    let validSuccessorTokens = finalWithdrawalTokens.(1) = initialWithdrawalTokens.(1) + 1 && finalWithdrawalTokens.(0) = initialWithdrawalTokens.(0) in
+    let validFinalOwners = slicedFinalOwners = slicedInitialOwners && List.length finalTokenOwners = List.length tokenOwners + 1 in
+    let validMintDetails = mintTokenDetails = finalMintTokenDetails in
+
+    validSuccessorScript &&
+    validSuccessorValue &&
+    validSuccessorTokens &&
+    validFinalOwners &&
+    validMintDetails &&
+    (* HEIGHT < 1667857691 -- OCaml equivalent for this condition needs to be implemented *)
+    
+(* The final evaluation *)
+sigmaPropEquivalent
