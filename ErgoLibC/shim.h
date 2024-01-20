@@ -6,6 +6,6 @@
 #define ERGO_REST
 #endif
 
-#include "../../../ergo-lib-c/h/ergo_lib.h"
+#include "./ergo_lib.h"
 
 #endif /* ERGO_LIB_SHIM_H_ */
