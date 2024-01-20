@@ -2,6 +2,7 @@ This is a work in progress translation between C bindings for sigma-rust and nat
 We do not recommend utilizing this repository in its current state.
 
 Contracts:
+
 ~~-Psuedocode convesions to eML and ML for existing ergoscript contracts~~
 - Create native functions and variables where direct translation between ErgoScript and OCaml is allowed
 - Import C types from ergo-lib-c when needed initially to achieve functionality
