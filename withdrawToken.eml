@@ -1,0 +1,36 @@
+let swampAudioNode = "9hKFHa886348VhfM1BRfLPKi8wwXMnyVqqmri9p5zPFE8qgMMui" |> Bytes.of_string
+let withdrawFee = 10000000L
+let initialWithdrawalTokens = SELF.tokens.(0)
+let tokenOwners = SELF.R7.(get : (int * bytes) list)
+let swampAudioBox = OUTPUTS.(0)
+let withdrawalBox = OUTPUTS.(1)
+let successor = OUTPUTS.(2)
+let tokenIndex = withdrawalBox.R4.(get : int)
+let finalTokenOwners = successor.R7.(get : (int * bytes) list)
+let validSwampAudioScript = swampAudioBox.propositionBytes = swampAudioNode
+let validSwampValue = swampAudioBox.value >= withdrawFee
+let validWithdrawalScript = withdrawalBox.propositionBytes = (List.nth (List.nth tokenOwners tokenIndex) 1)
+let validWithdrawAmount = withdrawalBox.tokens.(0).(0) = initialWithdrawalTokens.(0) && withdrawalBox.tokens.(0).(1) = 1
+let validSuccessorScript = successor.propositionBytes = SELF.propositionBytes
+let validSuccessorValue = successor.value >= SELF.value
+let validSuccessorTokens =
+  if initialWithdrawalTokens.(1) > 1 then
+    let finalWithdrawalTokens = successor.tokens.(0) in
+    finalWithdrawalTokens.(1) = initialWithdrawalTokens.(1) - 1 && finalWithdrawalTokens.(0) = initialWithdrawalTokens.(0)
+  else true
+let validSuccessorOwners =
+  let before = List.sub tokenOwners 0 tokenIndex in
+  let after = List.sub tokenOwners (tokenIndex + 1) (List.length tokenOwners - tokenIndex - 1) in
+  before @ after = finalTokenOwners
+in
+SigmaProp (
+  validSwampAudioScript &&
+  validSwampValue &&
+  validWithdrawalScript &&
+  validWithdrawAmount &&
+  validSuccessorScript &&
+  validSuccessorValue &&
+  validSuccessorTokens &&
+  validSuccessorOwners
+)
+
